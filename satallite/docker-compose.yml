@@ -1,0 +1,6 @@
+services:
+  satellite-api:
+    build: .
+    container_name: satellite-api
+    ports:
+      - "3000:3000"
