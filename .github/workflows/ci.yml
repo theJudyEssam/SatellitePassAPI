@@ -46,4 +46,4 @@ jobs:
       - name: Test Docker container
         run: |
           sleep 10 # Wait for the container to start
-          curl -f http://localhost:3000 || exit 1
+          curl -f curl -f http://localhost:3000/satellites/25544 || exit 1
