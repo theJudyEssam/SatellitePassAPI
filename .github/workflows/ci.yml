@@ -36,3 +36,14 @@ jobs:
 
       - name: Build application
         run: npm run build
+
+      - name: Build Docker image
+        run: docker build -t satellite-api 
+
+      - name: Run Docker container
+        run: docker-compose up -d
+
+      - name: Test Docker container
+        run: |
+          sleep 10 # Wait for the container to start
+          curl -f http://localhost:3000 || exit 1
