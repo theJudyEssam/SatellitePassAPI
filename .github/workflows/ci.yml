@@ -51,8 +51,8 @@ jobs:
 
       - name: Build Docker image
         if: github.event_name == 'push'
-        run: docker build -t ghcr.io/${{ github.repository_owner }}/satellite-api:latest .
+        run: docker build -t ghcr.io/thejudyessam/satellite-api:latest .
 
       - name: Push Docker image
         if: github.event_name == 'push'
-        run: docker push ghcr.io/${{ github.repository_owner }}/satellite-api:latest
+        run: docker push ghcr.io/thejudyessam/satellite-api:latest
