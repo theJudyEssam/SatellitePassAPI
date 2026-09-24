@@ -76,7 +76,7 @@ jobs:
             docker rm satellite-api
             fi
 
-            docker run --name satellite-api -p 3000:3000 ghcr.io/thejudyessam/satellite-api:latest 
+            docker run -d --name satellite-api -p 3000:3000 ghcr.io/thejudyessam/satellite-api:latest 
 
     
 

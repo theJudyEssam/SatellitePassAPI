@@ -1,0 +1,14 @@
+name: production
+
+permissions:
+  contents: read
+  packages: write
+
+on:
+  push:
+    branches:
+      - production
+
+  pull_request:
+    branches:
+      - production

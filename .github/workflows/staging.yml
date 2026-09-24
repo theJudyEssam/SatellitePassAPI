@@ -1,0 +1,14 @@
+name: staging
+
+permissions:
+  contents: read
+  packages: write
+
+on:
+  push:
+    branches:
+      - develop
+
+  pull_request:
+    branches:
+      - develop
