@@ -53,6 +53,30 @@ jobs:
         if: github.event_name == 'push'
         run: docker build -t ghcr.io/thejudyessam/satellite-api:latest .
 
+
+      
       - name: Push Docker image
         if: github.event_name == 'push'
         run: docker push ghcr.io/thejudyessam/satellite-api:latest
+
+      - name: SSH into EC2 instance
+        if: github.event_name == 'push'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_KEY}}
+          port: 22
+          script:
+            |
+            docker pull ghcr.io/thejudyessam/satellite-api:latest
+
+            if docker ps -a --format '{{.Names}}' | grep -q '^satellite-api$'; then
+            docker stop satellite-api
+            docker rm satellite-api
+            fi
+
+            docker run --name satellite-api -p 3000:3000 ghcr.io/thejudyessam/satellite-api:latest 
+
+    
+
