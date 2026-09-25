@@ -1,4 +1,4 @@
-name: CI
+name: Development
 
 permissions:
   contents: read
@@ -38,6 +38,14 @@ jobs:
       - name: Run tests
         run: npm test
 
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Build application
         run: npm run build
 
@@ -53,12 +61,15 @@ jobs:
         if: github.event_name == 'push'
         run: docker build -t ghcr.io/thejudyessam/satellite-api:latest .
 
-
-      
       - name: Push Docker image
         if: github.event_name == 'push'
         run: docker push ghcr.io/thejudyessam/satellite-api:latest
 
+  push:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
       - name: SSH into EC2 instance
         if: github.event_name == 'push'
         uses: appleboy/ssh-action@v1.0.3
@@ -67,8 +78,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_KEY}}
           port: 22
-          script:
-            |
+          script: |
             docker pull ghcr.io/thejudyessam/satellite-api:latest
 
             if docker ps -a --format '{{.Names}}' | grep -q '^satellite-api$'; then
@@ -76,7 +86,4 @@ jobs:
             docker rm satellite-api
             fi
 
-            docker run -d --name satellite-api -p 3000:3000 ghcr.io/thejudyessam/satellite-api:latest 
-
-    
-
+            docker run -d --name satellite-api -p 3000:3000 ghcr.io/thejudyessam/satellite-api:latest
