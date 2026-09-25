@@ -75,7 +75,8 @@ jobs:
         if: github.event_name == 'push'
         run: docker push ghcr.io/thejudyessam/satellite-api:latest
 
-  push:
+  deploy:
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     environment: development
