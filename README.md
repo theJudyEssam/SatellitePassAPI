@@ -19,7 +19,11 @@ The API determines when the satellite rises above a configurable minimum elevati
 
 Satellite orbital data is retrieved from **CelesTrak** and propagated using **satellite.js**.
 
-The application exposes a small number of endpoints for retrieving satellite data, propagating satellite positions, and calculating satellite passes.
+The application exposes endpoints for:
+
+* Retrieving satellite orbital data
+* Propagating satellite positions
+* Calculating satellite passes for an observer
 
 ### Example
 
@@ -38,6 +42,7 @@ Satellite Pass API
 
         ↓
 
+Pass Detection
 Rise Time
 Peak Elevation
 Set Time
@@ -52,47 +57,57 @@ The satellite calculation is primarily used as a realistic workload for the depl
 
 The main objective of this project is to demonstrate how a change can move from source code to a deployed application through an automated pipeline.
 
-The intended flow is:
+The project uses separate **development** and **production** environments.
 
 ```text
-Developer
-   │
-   │ git push
-   ▼
-GitHub Repository
-   │
-   ▼
-GitHub Actions
-   │
-   ├── Install dependencies
-   ├── Run tests
-   ├── Build application
-   ├── Build Docker image
-   └── Push image to GHCR
-            │
-            ▼
-   GitHub Container Registry
-            │
-            ▼
-      Deployment Pipeline
+                         GitHub Repository
+                                │
+                 ┌──────────────┴──────────────┐
+                 │                             │
+              develop                         main
+                 │                             │
+                 ▼                             ▼
+          Development CI/CD             Production CI/CD
+                 │                             │
+                 ▼                             ▼
+              GHCR                          GHCR
+                 │                             │
+                 ▼                             ▼
+        Development EC2             Production EC2
+                 │                             │
+                 ▼                             ▼
+          Docker Container             Docker Container
 ```
 
-The goal is to make deployments **repeatable, automated, and consistent**.
+The goal is to make deployments:
+
+* Repeatable
+* Automated
+* Consistent
+* Separated by environment
 
 ---
 
 # CI/CD Pipeline
 
-The project uses GitHub Actions as the automation layer.
+The project uses **GitHub Actions** as the automation layer.
 
-The pipeline is divided conceptually into two stages:
+The pipeline is divided into **Continuous Integration** and **Continuous Deployment**.
 
-### Continuous Integration
+## Continuous Integration
 
-Every pull request targeting the development branch is validated by GitHub Actions.
+Pull requests targeting `develop` or `main` are validated by GitHub Actions.
+
+The CI process performs:
 
 ```text
 Pull Request
+     │
+     ▼
+Checkout repository
+     │
+     ▼
+Setup Node.js
      │
      ▼
 Install dependencies
@@ -104,31 +119,81 @@ Run Jest tests
 Build NestJS application
 ```
 
-This ensures that changes can be validated before they are merged.
+This ensures that changes are tested and compiled before being deployed.
 
-### Continuous Deployment
+## Continuous Deployment
 
-When code is pushed to the development branch, the pipeline additionally creates and publishes a Docker image.
+A push to an environment branch triggers deployment.
+
+### Development
 
 ```text
 Push to develop
-     │
-     ▼
-Install dependencies
-     │
-     ▼
+      │
+      ▼
 Run tests
-     │
-     ▼
+      │
+      ▼
 Build application
-     │
-     ▼
+      │
+      ▼
 Build Docker image
-     │
-     ▼
+      │
+      ▼
 Push image to GHCR
+      │
+      ▼
+SSH into Development EC2
+      │
+      ▼
+Pull image
+      │
+      ▼
+Replace running container
 ```
 
+### Production
+
+```text
+Push to main
+      │
+      ▼
+Run tests
+      │
+      ▼
+Build application
+      │
+      ▼
+Build Docker image
+      │
+      ▼
+Push image to GHCR
+      │
+      ▼
+SSH into Production EC2
+      │
+      ▼
+Pull image
+      │
+      ▼
+Replace running container
+```
+
+GitHub Actions uses separate GitHub Environments for the two deployment targets:
+
+```text
+development
+    ├── EC2_HOST
+    ├── EC2_USERNAME
+    └── EC2_KEY
+
+production
+    ├── EC2_HOST
+    ├── EC2_USERNAME
+    └── EC2_KEY
+```
+
+This keeps environment-specific deployment credentials separate.
 
 ---
 
@@ -143,9 +208,21 @@ The Docker image contains:
 * Compiled NestJS application
 * Application startup configuration
 
-Instead of installing and configuring Node.js and the application separately on every server, the deployment environment can simply run the same Docker image.
+The Dockerfile also runs the application's tests and build during image creation.
 
-The same application artifact can therefore be promoted between environments rather than rebuilding the application differently for each environment.
+Instead of installing and configuring Node.js and the application separately on every server, the deployment environment can run the same Docker image produced by the CI pipeline.
+
+This creates a clear separation between:
+
+```text
+Build
+  ↓
+Docker Image
+  ↓
+Run
+```
+
+The application is therefore built once and the resulting artifact is consumed by the deployment environments.
 
 ---
 
@@ -167,15 +244,55 @@ ghcr.io/thejudyessam/satellite-api:latest
 
 GHCR acts as the bridge between the CI pipeline and the deployment environments.
 
-Instead of a server building the application itself, the server can pull a previously built image:
+The EC2 instances do not build the application themselves. Instead, they pull the image produced by GitHub Actions:
 
 ```bash
-docker pull ghcr.io/thejudyessam/satellite-api:<tag>
+docker pull ghcr.io/thejudyessam/satellite-api:latest
 ```
 
-and run that image.
+and run it.
 
 This separates **building** from **running** the application.
+
+---
+
+# Deployment Architecture
+
+The application currently runs on two AWS EC2 instances.
+
+```text
+                         Internet
+                            │
+              ┌─────────────┴─────────────┐
+              │                           │
+              ▼                           ▼
+       Development EC2             Production EC2
+              │                           │
+              ▼                           ▼
+          Docker                      Docker
+              │                           │
+              ▼                           ▼
+       satellite-api               satellite-api
+              │                           │
+              ▼                           ▼
+         NestJS API                  NestJS API
+```
+
+The application listens on port `3000`.
+
+```text
+EC2 :3000
+   │
+   ▼
+Docker :3000
+   │
+   ▼
+NestJS :3000
+```
+
+For development/testing, the EC2 security group restricts access to port `3000` to an allowed public IP address.
+
+SSH access is provided through port `22`.
 
 ---
 
@@ -200,6 +317,12 @@ This separates **building** from **running** the application.
 ## Container Registry
 
 * **GitHub Container Registry (GHCR)**
+
+## Infrastructure
+
+* **AWS EC2**
+* **AWS Security Groups**
+* **SSH**
 
 ## Satellite Data
 
@@ -244,7 +367,7 @@ The service:
 
 # API Endpoints
 
-### Get satellite information
+## Get Satellite Information
 
 ```http
 GET /satellites/:noradId
@@ -258,7 +381,7 @@ GET /satellites/25544
 
 ---
 
-### Propagate satellite position
+## Propagate Satellite Position
 
 ```http
 GET /satellites/:noradId/propagate
@@ -272,7 +395,7 @@ GET /satellites/25544/propagate
 
 ---
 
-### Calculate satellite pass
+## Calculate Satellite Pass
 
 ```http
 GET /satellites/:noradId/pass-time/:latitude/:longitude/:altitude
@@ -284,15 +407,15 @@ Example:
 GET /satellites/25544/pass-time/40.7128/-74.0060/10
 ```
 
-The response contains the detected rise time, peak time, set time, and maximum elevation.
+The endpoint calculates the next detected pass above the configured minimum elevation for the specified observer.
 
 ---
 
 # Testing
 
-The application uses Jest for unit testing.
+The application uses **Jest** for unit testing.
 
-Tests cover, among other things:
+Tests cover:
 
 * Service initialization
 * CelesTrak TLE retrieval
@@ -302,11 +425,13 @@ Tests cover, among other things:
 * Satellite pass detection
 * Cases where no visible pass occurs
 
-Tests are executed locally and automatically as part of the GitHub Actions pipeline.
+Run the tests locally with:
 
 ```bash
 npm test
 ```
+
+Tests are also executed automatically by GitHub Actions before deployment.
 
 ---
 
@@ -372,9 +497,11 @@ docker compose up
 .
 ├── .github/
 │   └── workflows/
-│       └── ci.yml
+│       ├── ci.yml
+│       ├── development.yml
+│       └── production.yml
 │
-└── satellite/
+└── satallite/
     ├── src/
     ├── Dockerfile
     ├── docker-compose.yml
@@ -383,7 +510,7 @@ docker compose up
     └── ...
 ```
 
-The GitHub Actions workflow is kept at the repository root because GitHub automatically discovers workflows under:
+The GitHub Actions workflows are kept at the repository root because GitHub automatically discovers workflows under:
 
 ```text
 .github/workflows/
@@ -393,27 +520,52 @@ The GitHub Actions workflow is kept at the repository root because GitHub automa
 
 # Current Pipeline
 
-The current CI pipeline performs the following steps:
+The complete deployment pipeline is currently:
 
 ```text
-1. Checkout repository
+1. Developer pushes code
         ↓
-2. Setup Node.js
+2. GitHub Actions starts
         ↓
-3. Install dependencies
+3. Checkout repository
         ↓
-4. Run Jest tests
+4. Setup Node.js
         ↓
-5. Build NestJS application
+5. Install dependencies
         ↓
-6. Authenticate with GHCR
+6. Run Jest tests
         ↓
-7. Build Docker image
+7. Build NestJS application
         ↓
-8. Push Docker image to GHCR
+8. Authenticate with GHCR
+        ↓
+9. Build Docker image
+        ↓
+10. Push Docker image to GHCR
+        ↓
+11. SSH into target EC2 instance
+        ↓
+12. Pull Docker image
+        ↓
+13. Stop existing container
+        ↓
+14. Remove existing container
+        ↓
+15. Start new container
 ```
 
-The next stage of the project is to consume that image from deployment environments rather than building the application directly on the target server and add multi-enviroments for the project.
+The target environment depends on the branch:
+
+```text
+develop
+   ↓
+Development EC2
+
+
+main
+   ↓
+Production EC2
+```
 
 ---
 
@@ -425,13 +577,18 @@ The main concepts demonstrated are:
 
 * Automated testing
 * Continuous integration
+* Continuous deployment
 * Docker containerization
 * Docker Compose
 * Container image management
 * GitHub Actions
 * GitHub Container Registry
+* AWS EC2 deployment
+* Environment separation
+* SSH-based deployment
 * Artifact promotion
-* Automated deployment
+* Automated application replacement
 
-The satellite calculation is simply the application being deployed; **the deployment pipeline is the primary engineering focus of the project.**
+The satellite calculation is simply the application being deployed.
 
+**The deployment pipeline is the primary engineering focus of the project.**
